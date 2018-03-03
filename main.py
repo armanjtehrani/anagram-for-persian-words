@@ -2,39 +2,6 @@ import codecs
 from time import time
 
 
-class AnagramBuilder:
-    def __init__(self, dictionary):
-        self.main_word = ""
-        self.list_of_anagrams = []
-        self.dictionary = dictionary
-
-    def init(self, word):
-        self.main_word = word
-        self.list_of_anagrams = []
-
-    def make_anagrams_for_word(self, word):
-        self.init(word)
-        word_in_list = [w for w in word]
-        self.make_anagrams_with_acceptable_words(word_in_list)
-        return self.list_of_anagrams
-
-    def make_anagrams_with_acceptable_words(self, words: list, before: str=''):
-        if len(words) == 1:
-            final = before + words[0]
-            if final == self.main_word:
-                return
-            if self.dictionary.word_exist_in_db(final):
-                if final not in self.list_of_anagrams:
-                    self.list_of_anagrams.append(final)
-        else:
-            for index in range(len(words)):
-                word = words[index]
-                next_before = before + word
-                others = [words[i] for i in range(len(words)) if i != index]
-                if self.dictionary.db_contains_word(next_before):
-                    self.make_anagrams_with_acceptable_words(others, next_before)
-
-
 class UnindexedDatabase:
     def __init__(self, db):
         self.db = db
@@ -171,6 +138,104 @@ class HashedDatabase:
         return "3-hashed database"
 
 
+class AnagramBuilder:
+    def __init__(self, dictionary):
+        self.main_word = ""
+        self.list_of_anagrams = []
+        self.dictionary = dictionary
+
+    def init(self, word):
+        self.main_word = word
+        self.list_of_anagrams = []
+
+    def make_anagrams_for_word(self, word):
+        self.init(word)
+        word_in_list = [w for w in word]
+        self.make_anagrams_with_acceptable_words(word_in_list)
+        return self.list_of_anagrams
+
+    def make_anagrams_with_acceptable_words(self, words: list, before: str=''):
+        if len(words) == 1:
+            final = before + words[0]
+            if final == self.main_word:
+                return
+            if self.dictionary.word_exist_in_db(final):
+                if final not in self.list_of_anagrams:
+                    self.list_of_anagrams.append(final)
+        else:
+            for index in range(len(words)):
+                word = words[index]
+                next_before = before + word
+                others = [words[i] for i in range(len(words)) if i != index]
+                if self.dictionary.db_contains_word(next_before):
+                    self.make_anagrams_with_acceptable_words(others, next_before)
+
+
+class PrimeNumberFinder:
+    def __init__(self):
+        self.current_prime_number = None
+        self.all_prime_numbers_found = []
+
+    def find_next_prime_number(self):
+        if self.current_prime_number is None:
+            self.set_new_prime_number_to(2)
+            return self.current_prime_number
+        next_prime = self.current_prime_number + 1
+        while True:
+            for found_prime in self.all_prime_numbers_found:
+                if next_prime % found_prime == 0:
+                    break
+            else:
+                break
+            next_prime += 1
+        self.set_new_prime_number_to(next_prime)
+        return next_prime
+
+    def set_new_prime_number_to(self, new_prime):
+        self.current_prime_number = new_prime
+        self.all_prime_numbers_found.append(new_prime)
+
+
+class PerfectHashedAnagramBuilder:
+    def __init__(self, dictionary):
+        self.prime_number_finder = PrimeNumberFinder()
+        self.main_word = ""
+        self.word_to_prime_number = {}
+        self.hash_to_anagram = {}
+        self.dictionary = dictionary
+        self.build_hash_for_anagram()
+
+    def build_hash_for_anagram(self):
+        for word in self.dictionary:
+            word_hash = self.calculate_hash_for_word(word)
+            anagrams_for_word = self.hash_to_anagram.get(word_hash, [])
+            if word not in anagrams_for_word:
+                anagrams_for_word.append(word)
+                self.hash_to_anagram[word_hash] = anagrams_for_word
+
+    def calculate_hash_for_word(self, word):
+        word_hash = 1
+        for letter in word:
+            prime_for_letter = self.word_to_prime_number.get(letter)
+            if prime_for_letter is None:
+                prime_for_letter = self.prime_number_finder.find_next_prime_number()
+                self.word_to_prime_number[letter] = prime_for_letter
+            word_hash *= prime_for_letter
+        return word_hash
+
+    def make_anagrams_for_word(self, word):
+        hash_word = self.calculate_hash_for_word(word)
+        all_anagrams = self.hash_to_anagram.get(hash_word, [])
+        anagrams_for_word = all_anagrams.copy()
+        word_index = all_anagrams.index(word) if word in self.dictionary else None
+        if word_index is not None:
+            del anagrams_for_word[word_index]
+        return anagrams_for_word
+
+    def __str__(self):
+        return "4-perfect hashed database"
+
+
 class Main:
     def __init__(self):
         self.db = {}
@@ -183,6 +248,7 @@ class Main:
         print("building indexed database:")
         tin = time()
         self.indexed_db = IndexedDatabase(self.db)
+        # self.indexed_db = []
         print("time spent to build indexed db:", time() - tin)
 
         print("building hashed database:")
@@ -191,6 +257,12 @@ class Main:
         print("time spent to build hashed db:", time() - tha)
 
         self.anagram_builder = AnagramBuilder(self.unindexed_db)
+
+        tph = time()
+        self.perfect_anagram_builder = PerfectHashedAnagramBuilder(self.db)
+        print("time spent to build pefrect hashed db:", time() - tph)
+
+        self.main_anagram_builder = self.anagram_builder
 
     def build_database(self):
         database = codecs.open('db/database', encoding='utf-8')
@@ -201,21 +273,30 @@ class Main:
 
     def run(self):
         while True:
-            print("please insert your input:\ncurrent db is: ", self.anagram_builder.dictionary)
+            current_db_name = str(self.anagram_builder.dictionary) \
+                if self.main_anagram_builder is self.anagram_builder \
+                else str(self.main_anagram_builder)
+            print("please insert your input:\ncurrent db is: ", current_db_name)
             print("if you want to change the database, "
-                  "press 1 for unindexed db, press 2 for indexed db & "
-                  "press 3 for hashed db")
+                  "press 1 for un indexed db, press 2 for indexed db, "
+                  "press 3 for hashed db & "
+                  "press 4 for perfect hashed db")
             input_word = input()
             print("you entered", input_word)
             if input_word == '1':
                 self.anagram_builder.dictionary = self.unindexed_db
+                self.main_anagram_builder = self.anagram_builder
             elif input_word == '2':
                 self.anagram_builder.dictionary = self.indexed_db
+                self.main_anagram_builder = self.anagram_builder
             elif input_word == '3':
                 self.anagram_builder.dictionary = self.hashed_db
+                self.main_anagram_builder = self.anagram_builder
+            elif input_word == '4':
+                self.main_anagram_builder = self.perfect_anagram_builder
             else:
                 tan = time()
-                anagrams = self.anagram_builder.make_anagrams_for_word(input_word)
+                anagrams = self.main_anagram_builder.make_anagrams_for_word(input_word)
                 time_spent = time() - tan
                 if len(anagrams) == 0:
                     print("there is no anagram for your input")
